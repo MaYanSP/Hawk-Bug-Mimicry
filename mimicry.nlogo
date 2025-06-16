@@ -1,5 +1,6 @@
 breed [bugs bug]
 breed [hawks hawk]
+breed [foods food]
 bugs-own [
   pattern
   toxic
@@ -8,6 +9,7 @@ bugs-own [
 ]
 hawks-own [
   speed
+  energy
   learned-avoidance
   avoidance-threshold
 ]
@@ -25,24 +27,35 @@ to setup
 end
 
 to go
+  if count bugs = 0 and count hawks = 0 [
+    stop
+  ]
   tick
-  if count bugs < bug-population [
+  if ticks mod ticks-per-food = 0 [
+    summon-food food-amount
+  ]
+  if count bugs < bug-population and constant-populations [
     summon-bugs 1
   ]
   ask bugs [
-    move-forward
+    natural-selection-give-birth
+    find-food
+    lose-energy
   ]
   ask hawks [
+    give-birth
     set-color
     set-threshold
     decay-memory
     hunt
+    lose-energy
   ]
 end
 
 to summon-bugs [x]
   create-bugs x [
     setxy random-xcor random-ycor
+    set energy starting-energy
     set speed 0.5
     ifelse random-float 1 < toxic-proportion [
       set toxic True
@@ -69,6 +82,7 @@ to summon-hawks [x]
     set-color
     set speed 0.6
     set size 2
+    set energy starting-energy
   ]
 end
 
@@ -77,9 +91,33 @@ to move-forward
   fd speed
 end
 
-to hunt
+to hunt-testing ; currently not in use due to overcomplicating the model unneccesarliy
   let nearby-bugs bugs in-radius 5
   if learned-avoidance > avoidance-threshold [
+    set nearby-bugs nearby-bugs with [pattern = green]
+  ]
+  ifelse any? nearby-bugs [
+    let closest-bug min-one-of nearby-bugs [distance myself]
+    let turn towardsxy [xcor] of closest-bug [ycor] of closest-bug ; checks the rt necessary to face bug
+    ifelse turn > 360 - max-turn or turn < max-turn [ ; checks if the turn is smaller than the max-turn (or larger than 360 - max-turn)
+      face closest-bug ; if turn is smaller, just make the turn
+    ] [
+      ifelse turn > 180 [ ; if turn is not smaller
+        rt max-turn ; if the turn is to the right, turn max-turn to the right
+      ] [
+        lt max-turn ; if it's to the left, do the same but left
+      ]
+    ]
+    fd speed
+    kill-bug
+  ] [
+    move-forward
+  ]
+end
+
+to hunt
+  let nearby-bugs bugs in-radius 5
+  if learned-avoidance > avoidance-threshold and energy > food-desparation-threshold[
     set nearby-bugs nearby-bugs with [pattern = green]
   ]
   ifelse any? nearby-bugs [
@@ -93,10 +131,14 @@ to hunt
 end
 
 to kill-bug
-  let target one-of bugs-here
+  let target one-of bugs in-radius 1
   if target != nobody [
+    let gained-energy energy-from-bug
     if [pattern] of target = violet [
       ifelse [toxic] of target [
+        if random-float 1 < 0.1 [ ; Random Chance for toxic bug to HARM the hawk by reducing energy rather than gaining it
+          set gained-energy -5
+        ]
         set learned-avoidance min (list (learned-avoidance + 0.1) 1)
       ] [
         set learned-avoidance learned-avoidance * 0.9
@@ -105,6 +147,7 @@ to kill-bug
     ask target [
       die
     ]
+    set energy energy + gained-energy
   ]
 end
 
@@ -119,21 +162,106 @@ to decay-memory
 end
 
 to set-color
-  set color scale-color red (learned-avoidance + 0.25) 1.25 0
+  if breed = hawks [
+    set color scale-color red (learned-avoidance + 0.25) 1.5 0
+  ]
 end
 
+to find-food
+  let nearby-foods foods in-radius 5
+  ifelse any? nearby-foods [
+    let closest-food min-one-of nearby-foods [distance myself]
+    face closest-food
+    fd speed
+    eat-food
+  ] [
+    move-forward
+  ]
+end
 
+to eat-food
+  let target one-of foods in-radius 1
+  if target != nobody [
+    set energy energy + energy-from-food
+    ask target [
+      die
+    ]
+  ]
+end
 
+to summon-food [x]
+  create-foods x [
+    setxy random-xcor random-ycor
+    set shape "circle"
+    set color yellow
+    set size 0.5
+  ]
+end
+
+to lose-energy
+  let energy-lost 0.1
+  if breed = bugs [
+    if toxic [
+      set energy-lost 0.175
+    ]
+    if is-mimic [
+      set energy-lost 0.15
+    ]
+  ]
+
+  set energy energy - energy-lost
+  if energy <= 0 [
+    die
+  ]
+end
+
+to give-birth
+  if energy > 100 [
+    hatch 1 [
+      set energy starting-energy
+      setxy [xcor] of myself + random-float 4 - 2 [ycor] of myself + random-float 4 - 2
+    ]
+    set energy energy - 25
+  ]
+end
+
+to natural-selection-give-birth
+  if energy > 100 [
+    hatch 1 [
+      set energy starting-energy
+      if random-float 100 < mutation-chance [
+        set toxic not toxic
+      ]
+      if random-float 100 < mutation-chance and not toxic [
+        set pattern item 0 remove pattern [violet green]
+      ]
+      if toxic [
+        set pattern violet
+      ]
+      set color pattern
+      setxy [xcor] of myself + random-float 4 - 2 [ycor] of myself + random-float 4 - 2
+    ]
+    set energy energy - 25
+  ]
+end
+
+to-report is-mimic
+  ifelse not toxic and pattern = violet [
+    report True
+  ] [
+    report False
+  ]
+end
 
 @#$#@#$#@
 GRAPHICS-WINDOW
 210
 10
-925
-726
+922
+723
 -1
 -1
-7.0
+4.666666666666667
 1
 10
 1
@@ -143,10 +271,10 @@ GRAPHICS-WINDOW
 1
 1
 1
--50
-50
--50
-50
+-75
+75
+-75
+75
 0
 0
 1
@@ -159,7 +287,7 @@ INPUTBOX
 160
 105
 world-size
-50.0
+75.0
 1
 0
 Number
@@ -207,7 +335,7 @@ max-turn
 max-turn
 1
 45
-15.0
+10.0
 1
 1
 NIL
@@ -215,9 +343,9 @@ HORIZONTAL
 
 SLIDER
 5
-145
+245
 177
-178
+278
 mimic-proportion
 mimic-proportion
 0
@@ -239,18 +367,18 @@ Mean Learned Avoidance
 0.0
 10.0
 0.0
-1.0
+100.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [learned-avoidance] of hawks"
+"default" 1.0 0 -16777216 true "" "plot mean [learned-avoidance] of hawks * 100"
 
 SLIDER
 5
-180
+280
 177
-213
+313
 toxic-proportion
 toxic-proportion
 0
@@ -266,7 +394,7 @@ PLOT
 420
 1490
 730
-Bug Populations
+All Populations
 Ticks
 Count
 0.0
@@ -278,14 +406,15 @@ true
 "" ""
 PENS
 "Toxic" 1.0 0 -8630108 true "" "plot count bugs with [toxic]"
-"Mimics" 1.0 0 -13345367 true "" "plot count bugs with [not toxic and pattern = violet] "
+"Mimics" 1.0 0 -11221820 true "" "plot count bugs with [not toxic and pattern = violet] "
 "Harmless" 1.0 0 -10899396 true "" "plot count bugs with [not toxic and pattern = green]"
+"Hawks" 1.0 0 -2674135 true "" "plot count hawks"
 
 SLIDER
 5
-240
+175
 177
-273
+208
 bug-population
 bug-population
 0
@@ -298,14 +427,14 @@ HORIZONTAL
 
 SLIDER
 5
-275
+210
 177
-308
+243
 hawk-population
 hawk-population
 0
 25
-5.0
+10.0
 1
 1
 NIL
@@ -313,9 +442,9 @@ HORIZONTAL
 
 SLIDER
 5
-325
+385
 177
-358
+418
 bug-speed
 bug-speed
 0.5
@@ -328,9 +457,9 @@ HORIZONTAL
 
 SLIDER
 5
-360
+420
 177
-393
+453
 hawk-speed
 hawk-speed
 0.5
@@ -343,19 +472,257 @@ HORIZONTAL
 
 SWITCH
 5
-405
+315
 177
-438
+348
 constant-populations
 constant-populations
 1
 1
 -1000
 
+SLIDER
+5
+540
+177
+573
+food-amount
+food-amount
+1
+15
+15.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+575
+177
+608
+ticks-per-food
+ticks-per-food
+5
+50
+5.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+610
+177
+643
+starting-energy
+starting-energy
+1
+50
+25.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+645
+177
+678
+energy-from-food
+energy-from-food
+1
+25
+6.0
+1
+1
+NIL
+HORIZONTAL
+
+PLOT
+1495
+420
+1855
+730
+Relative Bug Population
+Ticks
+%
+0.0
+10.0
+0.0
+100.0
+true
+true
+"" ""
+PENS
+"Toxic" 1.0 0 -8630108 true "" "plot (count bugs with [toxic] / count bugs * 100)"
+"Mimic" 1.0 0 -11221820 true "" "plot (count bugs with [not toxic and pattern = violet] / count bugs * 100)"
+"Harmless" 1.0 0 -10899396 true "" "plot (count bugs with [not toxic and pattern = green] / count bugs * 100)"
+
+SLIDER
+5
+680
+177
+713
+energy-from-bug
+energy-from-bug
+1
+50
+7.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+455
+207
+488
+food-desparation-threshold
+food-desparation-threshold
+1
+50
+25.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+1450
+60
+1622
+93
+mutation-chance
+mutation-chance
+0
+100
+1.0
+0.5
+1
+%
+HORIZONTAL
+
+TEXTBOX
+1455
+25
+1625
+71
+Natural Selection
+20
+0.0
+1
+
+TEXTBOX
+10
+150
+160
+171
+Starting Populations
+17
+0.0
+1
+
+TEXTBOX
+10
+360
+160
+381
+Agent Parameters
+17
+0.0
+1
+
+TEXTBOX
+10
+495
+160
+536
+Environment Parameters
+17
+0.0
+1
+
+BUTTON
+210
+725
+352
+758
+Most Avoidant Hawk
+watch max-one-of hawks [learned-avoidance]
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+355
+725
+477
+758
+Most Naive Hawk
+watch min-one-of hawks [learned-avoidance]
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+480
+725
+612
+758
+Reset Perspective
+reset-perspective
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+MONITOR
+210
+760
+350
+805
+Avoidance
+[learned-avoidance] of max-one-of hawks [learned-avoidance] * 100
+2
+1
+11
+
+MONITOR
+355
+760
+475
+805
+Avoidance
+[learned-avoidance] of min-one-of hawks [learned-avoidance] * 100
+3
+1
+11
+
 @#$#@#$#@
 ## WHAT IS IT?
 
-(a general understanding of what the model is trying to show or explain)
+This model uses predators (hawks) capable of learning to test batesian mimicry of prey (bugs) that are either toxic or harmless and can display one of two patters - violet or green.
 
 ## HOW IT WORKS
 
