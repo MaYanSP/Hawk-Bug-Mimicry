@@ -1,5 +1,6 @@
 breed [bugs bug]
 breed [hawks hawk]
+breed [foods food]
 bugs-own [
   pattern
   toxic
@@ -8,6 +9,7 @@ bugs-own [
 ]
 hawks-own [
   speed
+  energy
   learned-avoidance
   avoidance-threshold
 ]
@@ -26,11 +28,16 @@ end
 
 to go
   tick
-  if count bugs < bug-population [
+  if ticks mod ticks-per-food = 0 [
+    summon-food food-amount
+  ]
+  if count bugs < bug-population and constant-populations [
     summon-bugs 1
   ]
   ask bugs [
-    move-forward
+    give-birth
+    find-food
+    lose-energy
   ]
   ask hawks [
     set-color
@@ -43,6 +50,7 @@ end
 to summon-bugs [x]
   create-bugs x [
     setxy random-xcor random-ycor
+    set energy starting-energy
     set speed 0.5
     ifelse random-float 1 < toxic-proportion [
       set toxic True
@@ -77,6 +85,30 @@ to move-forward
   fd speed
 end
 
+to hunt-testing
+  let nearby-bugs bugs in-radius 5
+  if learned-avoidance > avoidance-threshold [
+    set nearby-bugs nearby-bugs with [pattern = green]
+  ]
+  ifelse any? nearby-bugs [
+    let closest-bug min-one-of nearby-bugs [distance myself]
+    let turn towardsxy [xcor] of closest-bug [ycor] of closest-bug
+    ifelse turn > 360 - max-turn or turn < max-turn [
+      face closest-bug
+    ] [
+      ifelse turn > 180 [
+        rt max-turn
+      ] [
+        lt max-turn
+      ]
+    ]
+    fd speed
+    kill-bug
+  ] [
+    move-forward
+  ]
+end
+
 to hunt
   let nearby-bugs bugs in-radius 5
   if learned-avoidance > avoidance-threshold [
@@ -93,7 +125,7 @@ to hunt
 end
 
 to kill-bug
-  let target one-of bugs-here
+  let target one-of bugs in-radius 1
   if target != nobody [
     if [pattern] of target = violet [
       ifelse [toxic] of target [
@@ -122,6 +154,53 @@ to set-color
   set color scale-color red (learned-avoidance + 0.25) 1.25 0
 end
 
+to find-food
+  let nearby-foods foods in-radius 5
+  ifelse any? nearby-foods [
+    let closest-food min-one-of nearby-foods [distance myself]
+    face closest-food
+    fd speed
+    eat-food
+  ] [
+    move-forward
+  ]
+end
+
+to eat-food
+  let target one-of foods in-radius 1
+  if target != nobody [
+    set energy energy + energy-from-food
+    ask target [
+      die
+    ]
+  ]
+end
+
+to summon-food [x]
+  create-foods x [
+    setxy random-xcor random-ycor
+    set shape "circle"
+    set color yellow
+    set size 0.5
+  ]
+end
+
+to lose-energy
+  set energy energy - 0.1
+  if energy <= 0 [
+    die
+  ]
+end
+
+to give-birth
+  if energy > 100 [
+    hatch 1 [
+      set energy starting-energy
+      fd 1
+    ]
+    set energy energy - 25
+  ]
+end
 
 
 
@@ -305,7 +384,7 @@ hawk-population
 hawk-population
 0
 25
-5.0
+2.0
 1
 1
 NIL
@@ -352,10 +431,87 @@ constant-populations
 1
 -1000
 
+BUTTON
+5
+445
+122
+478
+Spawn food
+summon-food food-amount
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+SLIDER
+5
+485
+177
+518
+food-amount
+food-amount
+1
+15
+15.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+520
+177
+553
+ticks-per-food
+ticks-per-food
+5
+50
+10.0
+5
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+555
+177
+588
+starting-energy
+starting-energy
+1
+50
+25.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+590
+177
+623
+energy-from-food
+energy-from-food
+1
+25
+10.0
+1
+1
+NIL
+HORIZONTAL
+
 @#$#@#$#@
 ## WHAT IS IT?
 
-(a general understanding of what the model is trying to show or explain)
+This model uses predators (hawks) capable of learning to test batesian mimicry of prey (bugs) that are either toxic or harmless and can display one of two patters - violet or green.
 
 ## HOW IT WORKS
 
