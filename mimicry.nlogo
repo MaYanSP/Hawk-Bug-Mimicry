@@ -1,3 +1,9 @@
+extensions [csv]
+
+globals [
+  output-file
+]
+
 breed [bugs bug]
 breed [hawks hawk]
 breed [foods food]
@@ -20,13 +26,15 @@ to setup
   set-patch-size 350 / world-size
   set-default-shape bugs "bug"
   set-default-shape hawks "hawk"
-  clear-all
+  ca
   summon-bugs bug-population
   summon-hawks hawk-population
   reset-ticks
+  start-recording-results
 end
 
 to go
+  record-the-results
   if count bugs = 0 and count hawks = 0 [
     stop
   ]
@@ -202,10 +210,10 @@ to lose-energy
   let energy-lost 0.1
   if breed = bugs [
     if toxic [
-      set energy-lost 0.175
+      set energy-lost 0.15
     ]
     if is-mimic [
-      set energy-lost 0.15
+      set energy-lost 0.125
     ]
   ]
 
@@ -253,6 +261,40 @@ to-report is-mimic
   ]
 end
 
+to start-recording-results
+  if record-results [
+    let date (substring date-and-time 16 27)
+    let raw-time (substring date-and-time 0 15)
+    let time1 (replace-item (position ":" raw-time) raw-time "-")
+    let time2 (replace-item (position ":" time1) time1 "-")
+    let time3 (replace-item (position "." time2) time2 "-")
+    let time time3
+    let extension (word date "-" time ".csv")
+    set output-file (word "results/" extension)
+    print output-file
+    file-close-all
+    file-open output-file
+    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance"] ; header
+  ]
+end
+
+to record-the-results
+  if record-results [
+    file-open output-file
+    let total count bugs
+    file-print csv:to-row (list
+      ticks
+      (count bugs with [toxic])
+      (count bugs with [is-mimic])
+      (count bugs with [pattern = green])
+      (count hawks)
+      (ifelse-value (total > 0) [(count bugs with [toxic]) / total * 100] [0])
+      (ifelse-value (total > 0) [(count bugs with [is-mimic]) / total * 100] [0])
+      (ifelse-value (total > 0) [(count bugs with [pattern = green]) / total * 100] [0])
+      (mean [learned-avoidance] of hawks * 100))
+    file-close
+  ]
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 210
@@ -357,9 +399,9 @@ NIL
 HORIZONTAL
 
 PLOT
-940
+925
 10
-1430
+1415
 415
 Average Avoidance of Hawks
 Ticks
@@ -390,9 +432,9 @@ NIL
 HORIZONTAL
 
 PLOT
-940
+925
 420
-1490
+1475
 730
 All Populations
 Ticks
@@ -542,9 +584,9 @@ NIL
 HORIZONTAL
 
 PLOT
-1495
+1480
 420
-1855
+1840
 730
 Relative Bug Population
 Ticks
@@ -592,9 +634,9 @@ NIL
 HORIZONTAL
 
 SLIDER
-1450
+1435
 60
-1622
+1607
 93
 mutation-chance
 mutation-chance
@@ -607,9 +649,9 @@ mutation-chance
 HORIZONTAL
 
 TEXTBOX
-1455
+1440
 25
-1625
+1610
 71
 Natural Selection
 20
@@ -718,6 +760,34 @@ Avoidance
 3
 1
 11
+
+SWITCH
+925
+735
+1057
+768
+record-results
+record-results
+1
+1
+-1000
+
+BUTTON
+1060
+735
+1147
+768
+Close Files
+file-close-all
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
