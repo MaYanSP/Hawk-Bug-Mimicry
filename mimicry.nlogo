@@ -35,7 +35,7 @@ end
 
 to go
   record-the-results
-  if count bugs = 0 and count hawks = 0 [
+  if count bugs = 0 and count hawks = 0  or ticks >= tick-cap [
     stop
   ]
   tick
@@ -53,7 +53,6 @@ to go
   ask hawks [
     give-birth
     set-color
-    set-threshold
     decay-memory
     hunt
     lose-energy
@@ -66,20 +65,24 @@ to summon-bugs [x]
     set energy starting-energy
     set speed 0.5
     ifelse random-float 1 < toxic-proportion [
-      set toxic True
+      set toxic 0.1 + random-float 0.9
     ] [
-      set toxic False
+      set toxic 0
     ]
-    ifelse toxic [
-      set pattern violet
+    ifelse toxic >= 0.1 [
+      set pattern toxic
     ] [
       ifelse random-float 1 < mimic-proportion [
-        set pattern violet
+        set pattern 0.1 + random-float 0.9
       ] [
-        set pattern green
+        set pattern 0
       ]
     ]
-    set color pattern
+    ifelse pattern = 0 [
+      set color green
+    ] [
+      set color scale-color violet pattern 1.5 0
+    ]
   ]
 end
 
@@ -100,10 +103,7 @@ to move-forward
 end
 
 to hunt-testing ; currently not in use due to overcomplicating the model unneccesarliy
-  let nearby-bugs bugs in-radius 5
-  if learned-avoidance > avoidance-threshold [
-    set nearby-bugs nearby-bugs with [pattern = green]
-  ]
+  let nearby-bugs bugs in-radius 5 with [pattern <= 1 - learned-avoidance]
   ifelse any? nearby-bugs [
     let closest-bug min-one-of nearby-bugs [distance myself]
     let turn towardsxy [xcor] of closest-bug [ycor] of closest-bug ; checks the rt necessary to face bug
@@ -124,9 +124,9 @@ to hunt-testing ; currently not in use due to overcomplicating the model unnecce
 end
 
 to hunt
-  let nearby-bugs bugs in-radius 5
-  if learned-avoidance > avoidance-threshold and energy > food-desparation-threshold[
-    set nearby-bugs nearby-bugs with [pattern = green]
+  let nearby-bugs bugs in-radius 5 with [pattern <= 1 - [learned-avoidance] of myself]
+  if energy < food-desparation-threshold [
+    set nearby-bugs bugs in-radius 5
   ]
   ifelse any? nearby-bugs [
     let closest-bug min-one-of nearby-bugs [distance myself]
@@ -142,14 +142,12 @@ to kill-bug
   let target one-of bugs in-radius 1
   if target != nobody [
     let gained-energy energy-from-bug
-    if [pattern] of target = violet [
-      ifelse [toxic] of target [
-        if random-float 1 < 0.1 [ ; Random Chance for toxic bug to HARM the hawk by reducing energy rather than gaining it
-          set gained-energy -5
-        ]
-        set learned-avoidance min (list (learned-avoidance + 0.1) 1)
+    if [pattern] of target > 0 [
+      ifelse [toxic] of target > 0 [ ; Random Chance for toxic bug to HARM the hawk by reducing energy rather than gaining it - more toxic bugs more likely to cause energy loss
+        set gained-energy -3 * [toxic] of target
+        set learned-avoidance min list 1 (learned-avoidance + 0.2) ; if the hawk was harmed by the toxic bug, increase learned-avoidance by 0.2 (but no more than 1)
       ] [
-        set learned-avoidance learned-avoidance * 0.9
+        set learned-avoidance min list 1 (learned-avoidance * 0.95) ; if the bug was advertising itself as toxic but nothing happened, become less cautious/avoidant
       ]
     ]
     ask target [
@@ -159,7 +157,7 @@ to kill-bug
   ]
 end
 
-to set-threshold
+to set-threshold ; redundant code
   if ticks mod 100 = 0 [
     set avoidance-threshold random-float 1
   ]
@@ -209,11 +207,11 @@ end
 to lose-energy
   let energy-lost 0.1
   if breed = bugs [
-    if toxic [
-      set energy-lost 0.15
+    if toxic > 0 [
+      set energy-lost energy-lost + energy-lost * toxic * toxicity-cost
     ]
     if is-mimic [
-      set energy-lost 0.125
+      set energy-lost energy-lost + energy-lost * pattern * mimicry-cost
     ]
   ]
 
@@ -237,24 +235,51 @@ to natural-selection-give-birth
   if energy > 100 [
     hatch 1 [
       set energy starting-energy
+      if random-float 100 < mutation-chance [ ; if mutation occuring
+        ifelse toxic = 0 [
+          set toxic 0.1 + random-float 0.1 ; if NOT toxic, set toxicity to random value between 0.1 - 0.2
+        ] [
+          set toxic toxic + random-float 0.2 - 0.1 ; if already toxic, +- a value from 0 - 0.1 to toxicity
+          if toxic < 0.1 [
+            set toxic 0 ; if the toxicity is now lower than 0.1, become NON toxic (toxicity = 0)
+          ]
+          if toxic > 1 [
+            set toxic 1 ; cap at 1
+          ]
+        ]
+      ]
+      if random-float 100 < mutation-chance and toxic = 0 [ ; if mutation occurs and you are NOT toxic (toxicity = 0)
+        ifelse pattern = 0 [ ; if you're harmless,
+          set pattern 0.1 + random-float 0.1 ; become a mimic with a pattern between 0.1 - 0.2
+        ] [
+          set pattern pattern + random-float 0.2 - 0.1 ; if you are already a mimic, change pattern +- a value from 0 - 0.1
+          if pattern < 0.1 [ ; if pattern goes below 0.1
+            set pattern 0 ; become a harmless bug
+          ]
+          if pattern > 1 [
+            set pattern 1 ; cap at 1
+          ]
+        ]
+      ]
       if random-float 100 < mutation-chance [
-        set toxic not toxic
+        set toxic 0
+        set pattern 0
       ]
-      if random-float 100 < mutation-chance and not toxic [
-        set pattern item 0 remove pattern [violet green]
+      if toxic > 0 [
+        set pattern toxic
       ]
-      if toxic [
-        set pattern violet
+      set color scale-color violet pattern 1.5 0 ; give appropriate color
+      if pattern = 0 [
+        set color green
       ]
-      set color pattern
-      setxy [xcor] of myself + random-float 4 - 2 [ycor] of myself + random-float 4 - 2
+      setxy [xcor] of myself + random-float 4 - 2 [ycor] of myself + random-float 4 - 2 ; spawn baby in slightly diff coords
     ]
-    set energy energy - 25
+    set energy energy - 25 ; lose energy for birth
   ]
 end
 
 to-report is-mimic
-  ifelse not toxic and pattern = violet [
+  ifelse toxic = 0 and pattern > 0 and pattern < 55[
     report True
   ] [
     report False
@@ -274,7 +299,7 @@ to start-recording-results
     print output-file
     file-close-all
     file-open output-file
-    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance"] ; header
+    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance" "AvgToxicPattern"] ; header
   ]
 end
 
@@ -284,14 +309,15 @@ to record-the-results
     let total count bugs
     file-print csv:to-row (list
       ticks
-      (count bugs with [toxic])
+      (count bugs with [toxic > 0])
       (count bugs with [is-mimic])
-      (count bugs with [pattern = green])
+      (count bugs with [pattern = 0])
       (count hawks)
-      (ifelse-value (total > 0) [(count bugs with [toxic]) / total * 100] [0])
+      (ifelse-value (total > 0) [(count bugs with [toxic > 0]) / total * 100] [0])
       (ifelse-value (total > 0) [(count bugs with [is-mimic]) / total * 100] [0])
-      (ifelse-value (total > 0) [(count bugs with [pattern = green]) / total * 100] [0])
-      (mean [learned-avoidance] of hawks * 100))
+      (ifelse-value (total > 0) [(count bugs with [pattern = 0]) / total * 100] [0])
+      (mean [learned-avoidance] of hawks)
+      (mean [pattern] of bugs with [pattern < 0]))
     file-close
   ]
 end
@@ -409,12 +435,12 @@ Mean Learned Avoidance
 0.0
 10.0
 0.0
-100.0
+1.0
 true
 false
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "plot mean [learned-avoidance] of hawks * 100"
+"default" 1.0 0 -16777216 true "" "if count hawks > 0 [plot mean [learned-avoidance] of hawks]"
 
 SLIDER
 5
@@ -447,9 +473,9 @@ true
 true
 "" ""
 PENS
-"Toxic" 1.0 0 -8630108 true "" "plot count bugs with [toxic]"
-"Mimics" 1.0 0 -11221820 true "" "plot count bugs with [not toxic and pattern = violet] "
-"Harmless" 1.0 0 -10899396 true "" "plot count bugs with [not toxic and pattern = green]"
+"Toxic" 1.0 0 -8630108 true "" "plot count bugs with [toxic > 0]"
+"Mimics" 1.0 0 -11221820 true "" "plot count bugs with [toxic = 0 and pattern > 0] "
+"Harmless" 1.0 0 -10899396 true "" "plot count bugs with [toxic = 0 and pattern = 0]"
 "Hawks" 1.0 0 -2674135 true "" "plot count hawks"
 
 SLIDER
@@ -525,9 +551,9 @@ constant-populations
 
 SLIDER
 5
-540
+630
 177
-573
+663
 food-amount
 food-amount
 1
@@ -540,9 +566,9 @@ HORIZONTAL
 
 SLIDER
 5
-575
+665
 177
-608
+698
 ticks-per-food
 ticks-per-food
 5
@@ -555,9 +581,9 @@ HORIZONTAL
 
 SLIDER
 5
-610
+700
 177
-643
+733
 starting-energy
 starting-energy
 1
@@ -570,9 +596,9 @@ HORIZONTAL
 
 SLIDER
 5
-645
+735
 177
-678
+768
 energy-from-food
 energy-from-food
 1
@@ -599,15 +625,15 @@ true
 true
 "" ""
 PENS
-"Toxic" 1.0 0 -8630108 true "" "plot (count bugs with [toxic] / count bugs * 100)"
-"Mimic" 1.0 0 -11221820 true "" "plot (count bugs with [not toxic and pattern = violet] / count bugs * 100)"
-"Harmless" 1.0 0 -10899396 true "" "plot (count bugs with [not toxic and pattern = green] / count bugs * 100)"
+"Toxic" 1.0 0 -8630108 true "" "plot (count bugs with [toxic >= 0.1] / count bugs * 100)"
+"Mimic" 1.0 0 -11221820 true "" "plot (count bugs with [toxic = 0 and pattern > 0] / count bugs * 100)"
+"Harmless" 1.0 0 -10899396 true "" "plot (count bugs with [toxic = 0 and pattern = 0] / count bugs * 100)"
 
 SLIDER
 5
-680
+770
 177
-713
+803
 energy-from-bug
 energy-from-bug
 1
@@ -621,7 +647,7 @@ HORIZONTAL
 SLIDER
 5
 455
-207
+180
 488
 food-desparation-threshold
 food-desparation-threshold
@@ -634,25 +660,25 @@ NIL
 HORIZONTAL
 
 SLIDER
-1435
-60
-1607
-93
+620
+765
+792
+798
 mutation-chance
 mutation-chance
 0
 100
-1.0
+5.0
 0.5
 1
 %
 HORIZONTAL
 
 TEXTBOX
-1440
-25
-1610
-71
+625
+730
+795
+776
 Natural Selection
 20
 0.0
@@ -680,9 +706,9 @@ Agent Parameters
 
 TEXTBOX
 10
-495
+585
 160
-536
+626
 Environment Parameters
 17
 0.0
@@ -788,6 +814,70 @@ NIL
 NIL
 NIL
 1
+
+SLIDER
+5
+490
+180
+523
+toxicity-cost
+toxicity-cost
+0
+1
+0.5
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+925
+770
+1097
+803
+tick-cap
+tick-cap
+10000
+500000
+300000.0
+10000
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+525
+177
+558
+mimicry-cost
+mimicry-cost
+0
+1
+0.25
+0.01
+1
+NIL
+HORIZONTAL
+
+PLOT
+1420
+10
+1840
+415
+Average "Toxicity" of Toxic/Mimic Bugs
+Ticks
+Toxicity
+0.0
+10.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"default" 1.0 0 -8630108 true "" "ifelse count bugs with [toxic > 0] = 0 [\nplot 0\n] [\nplot mean [toxic] of bugs with [toxic > 0]\n]"
+"pen-1" 1.0 0 -11221820 true "" "ifelse count bugs with [pattern > 0] = 0 [\nplot 0\n] [\nplot mean [pattern] of bugs with [pattern > 0]\n]"
 
 @#$#@#$#@
 ## WHAT IS IT?
