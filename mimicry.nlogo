@@ -144,8 +144,8 @@ to kill-bug
     let gained-energy energy-from-bug
     if [pattern] of target > 0 [
       ifelse [toxic] of target > 0 [ ; Random Chance for toxic bug to HARM the hawk by reducing energy rather than gaining it - more toxic bugs more likely to cause energy loss
-        set gained-energy -3 * [toxic] of target
-        set learned-avoidance min list 1 (learned-avoidance + 0.2) ; if the hawk was harmed by the toxic bug, increase learned-avoidance by 0.2 (but no more than 1)
+        set gained-energy gained-energy - (70 / 9 * [toxic] of target + 49 / 18) ; function that results in energy - 3.5 = 3.5 when toxic = 0.1 and energy - 10.5 = -3.5 when toxic = 1
+        set learned-avoidance min list 1 (learned-avoidance + 0.1 * [toxic] of target * learning-sens) ; if the hawk was harmed by the toxic bug, increase learned-avoidance by 0.2 (but no more than 1)
       ] [
         set learned-avoidance min list 1 (learned-avoidance * 0.95) ; if the bug was advertising itself as toxic but nothing happened, become less cautious/avoidant
       ]
@@ -208,10 +208,10 @@ to lose-energy
   let energy-lost 0.1
   if breed = bugs [
     if toxic > 0 [
-      set energy-lost energy-lost + energy-lost * toxic * toxicity-cost
+      set energy-lost energy-lost + abs (toxicity-cost / 5 * 100 * toxic / (100 * toxic - 101)) ; exponential cost of toxicity to prevent extremely high toxicity at a low cost
     ]
     if is-mimic [
-      set energy-lost energy-lost + energy-lost * pattern * mimicry-cost
+      set energy-lost energy-lost + abs (mimicry-cost / 5 * 100 * pattern / (100 * pattern - 101)) ; exponential cost of mimicry to prevent extremely high mimicry at a an even lower cost
     ]
   ]
 
@@ -219,6 +219,15 @@ to lose-energy
   if energy <= 0 [
     die
   ]
+end
+
+to debug-energy [x]
+  print "old"
+  print 0.1 + 0.1 * x * toxicity-cost
+  print 0.1 + 0.1 * x * mimicry-cost
+  print "new"
+  print 0.1 + abs (toxicity-cost * 100 * x / (100 * x - 100))
+  print 0.1 + abs (mimicry-cost * 100 * x / (100 * x - 100))
 end
 
 to give-birth
@@ -261,7 +270,7 @@ to natural-selection-give-birth
           ]
         ]
       ]
-      if random-float 100 < mutation-chance [
+      if random-float 100 < mutation-chance [ ; if mutation occurs - just become harmless. workaround to buggy natural selection (?) causing no harmless bugs even when its most efficient
         set toxic 0
         set pattern 0
       ]
@@ -510,9 +519,9 @@ HORIZONTAL
 
 SLIDER
 5
-385
+375
 177
-418
+408
 bug-speed
 bug-speed
 0.5
@@ -525,9 +534,9 @@ HORIZONTAL
 
 SLIDER
 5
-420
+410
 177
-453
+443
 hawk-speed
 hawk-speed
 0.5
@@ -646,9 +655,9 @@ HORIZONTAL
 
 SLIDER
 5
-455
+515
 180
-488
+548
 food-desparation-threshold
 food-desparation-threshold
 1
@@ -668,7 +677,7 @@ mutation-chance
 mutation-chance
 0
 100
-5.0
+10.0
 0.5
 1
 %
@@ -696,9 +705,9 @@ Starting Populations
 
 TEXTBOX
 10
-360
+350
 160
-381
+371
 Agent Parameters
 17
 0.0
@@ -817,14 +826,14 @@ NIL
 
 SLIDER
 5
-490
+445
 180
-523
+478
 toxicity-cost
 toxicity-cost
 0
-1
-0.5
+0.25
+0.02
 0.01
 1
 NIL
@@ -839,7 +848,7 @@ tick-cap
 tick-cap
 10000
 500000
-300000.0
+500000.0
 10000
 1
 NIL
@@ -847,14 +856,14 @@ HORIZONTAL
 
 SLIDER
 5
-525
+480
 177
-558
+513
 mimicry-cost
 mimicry-cost
 0
-1
 0.25
+0.01
 0.01
 1
 NIL
@@ -878,6 +887,21 @@ false
 PENS
 "default" 1.0 0 -8630108 true "" "ifelse count bugs with [toxic > 0] = 0 [\nplot 0\n] [\nplot mean [toxic] of bugs with [toxic > 0]\n]"
 "pen-1" 1.0 0 -11221820 true "" "ifelse count bugs with [pattern > 0] = 0 [\nplot 0\n] [\nplot mean [pattern] of bugs with [pattern > 0]\n]"
+
+SLIDER
+5
+550
+177
+583
+learning-sens
+learning-sens
+0
+2
+1.75
+0.01
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
