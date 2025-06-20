@@ -308,7 +308,7 @@ to start-recording-results
     print output-file
     file-close-all
     file-open output-file
-    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance" "AvgToxicPattern"] ; header
+    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance" "AvgToxicity" "AvgMimicry"] ; header
   ]
 end
 
@@ -326,7 +326,8 @@ to record-the-results
       (ifelse-value (total > 0) [(count bugs with [is-mimic]) / total * 100] [0])
       (ifelse-value (total > 0) [(count bugs with [pattern = 0]) / total * 100] [0])
       (mean [learned-avoidance] of hawks)
-      (mean [pattern] of bugs with [pattern < 0]))
+      (mean [toxic] of bugs with [toxic > 0])
+      (mean [pattern] of bugs with [is-mimic]))
     file-close
   ]
 end
