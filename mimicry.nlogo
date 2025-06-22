@@ -18,6 +18,7 @@ hawks-own [
   energy
   learned-avoidance
   avoidance-threshold
+  learning-sens
 ]
 
 
@@ -51,7 +52,7 @@ to go
     lose-energy
   ]
   ask hawks [
-    give-birth
+    hawk-natural-selection-birth
     set-color
     decay-memory
     hunt
@@ -90,6 +91,7 @@ to summon-hawks [x]
   create-hawks x [
     setxy random-xcor random-ycor
     set learned-avoidance 0 ; avoidance applies to purple only
+    set learning-sens random-float 1
     set-color
     set speed 0.6
     set size 2
@@ -144,10 +146,10 @@ to kill-bug
     let gained-energy energy-from-bug
     if [pattern] of target > 0 [
       ifelse [toxic] of target > 0 [ ; Random Chance for toxic bug to HARM the hawk by reducing energy rather than gaining it - more toxic bugs more likely to cause energy loss
-        set gained-energy gained-energy - (70 / 9 * [toxic] of target + 49 / 18) ; function that results in energy - 3.5 = 3.5 when toxic = 0.1 and energy - 10.5 = -3.5 when toxic = 1
-        set learned-avoidance min list 1 (learned-avoidance + 0.1 * [toxic] of target * learning-sens) ; if the hawk was harmed by the toxic bug, increase learned-avoidance by 0.2 (but no more than 1)
+        set gained-energy gained-energy - ([toxic] of target * 1.5 * gained-energy) ; simpler function than the previous,
+        set learned-avoidance min list 1 (learned-avoidance + learning-sens / 2 * [toxic] of target) ; if the hawk was harmed by the toxic bug, increase learned-avoidance (but no more than 1)
       ] [
-        set learned-avoidance min list 1 (learned-avoidance * 0.95) ; if the bug was advertising itself as toxic but nothing happened, become less cautious/avoidant
+        set learned-avoidance min list 1 (learned-avoidance * (1 - learning-sens / 10)) ; if the bug was advertising itself as toxic but nothing happened, become less cautious/avoidant - the higher the learning sensitivity, the greater the effect
       ]
     ]
     ask target [
@@ -287,6 +289,25 @@ to natural-selection-give-birth
   ]
 end
 
+to hawk-natural-selection-birth
+  if energy > 100 [
+    hatch 1 [
+      set energy starting-energy
+      if random-float 100 < mutation-chance [
+        set learning-sens learning-sens + random-float 0.2 - 0.1
+        if learning-sens > 2 [
+          set learning-sens 2
+        ]
+        if learning-sens < 0 [
+          set learning-sens 0
+        ]
+      ]
+      setxy [xcor] of myself + random-float 4 - 2 [ycor] of myself + random-float 4 - 2 ; spawn baby in slightly diff coords
+    ]
+    set energy energy - 25
+  ]
+end
+
 to-report is-mimic
   ifelse toxic = 0 and pattern > 0 and pattern < 55[
     report True
@@ -308,7 +329,7 @@ to start-recording-results
     print output-file
     file-close-all
     file-open output-file
-    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance" "AvgToxicity" "AvgMimicry"] ; header
+    file-print csv:to-row ["Ticks" "Toxic" "Mimics" "Harmless" "Hawks" "RelativeToxic" "RelativeMimics" "RelativeHarmless" "LearnedAvoidance" "LearningSens" "AvgToxicity" "AvgMimicry"] ; header
   ]
 end
 
@@ -325,9 +346,10 @@ to record-the-results
       (ifelse-value (total > 0) [(count bugs with [toxic > 0]) / total * 100] [0])
       (ifelse-value (total > 0) [(count bugs with [is-mimic]) / total * 100] [0])
       (ifelse-value (total > 0) [(count bugs with [pattern = 0]) / total * 100] [0])
-      (mean [learned-avoidance] of hawks)
-      (mean [toxic] of bugs with [toxic > 0])
-      (mean [pattern] of bugs with [is-mimic]))
+      (ifelse-value (count hawks > 0) [mean [learned-avoidance] of hawks] [0])
+      (ifelse-value (count hawks > 0) [mean [learning-sens] of hawks] [0])
+      (ifelse-value (count bugs with [toxic > 0] > 0) [mean [toxic] of bugs with [toxic > 0]] [0])
+      (ifelse-value (count bugs with [is-mimic] > 0) [mean [pattern] of bugs with [is-mimic]] [0]))
     file-close
   ]
 end
@@ -437,7 +459,7 @@ HORIZONTAL
 PLOT
 925
 10
-1415
+1475
 415
 Average Avoidance of Hawks
 Ticks
@@ -447,10 +469,11 @@ Mean Learned Avoidance
 0.0
 1.0
 true
-false
+true
 "" ""
 PENS
-"default" 1.0 0 -16777216 true "" "if count hawks > 0 [plot mean [learned-avoidance] of hawks]"
+"Avoidance" 1.0 0 -16777216 true "" "if count hawks > 0 [plot mean [learned-avoidance] of hawks]"
+"Learning Sensitivity" 1.0 0 -2064490 true "" "if count hawks > 0 [plot mean [learning-sens] of hawks]"
 
 SLIDER
 5
@@ -622,7 +645,7 @@ HORIZONTAL
 PLOT
 1480
 420
-1840
+1885
 730
 Relative Bug Population
 Ticks
@@ -648,7 +671,7 @@ energy-from-bug
 energy-from-bug
 1
 50
-7.0
+12.0
 1
 1
 NIL
@@ -804,7 +827,7 @@ SWITCH
 768
 record-results
 record-results
-1
+0
 1
 -1000
 
@@ -834,7 +857,7 @@ toxicity-cost
 toxicity-cost
 0
 0.25
-0.02
+0.03
 0.01
 1
 NIL
@@ -864,17 +887,17 @@ mimicry-cost
 mimicry-cost
 0
 0.25
-0.01
+0.02
 0.01
 1
 NIL
 HORIZONTAL
 
 PLOT
-1420
+1480
 10
-1840
-415
+1885
+420
 Average "Toxicity" of Toxic/Mimic Bugs
 Ticks
 Toxicity
@@ -887,22 +910,7 @@ false
 "" ""
 PENS
 "default" 1.0 0 -8630108 true "" "ifelse count bugs with [toxic > 0] = 0 [\nplot 0\n] [\nplot mean [toxic] of bugs with [toxic > 0]\n]"
-"pen-1" 1.0 0 -11221820 true "" "ifelse count bugs with [pattern > 0] = 0 [\nplot 0\n] [\nplot mean [pattern] of bugs with [pattern > 0]\n]"
-
-SLIDER
-5
-550
-177
-583
-learning-sens
-learning-sens
-0
-2
-1.75
-0.01
-1
-NIL
-HORIZONTAL
+"pen-1" 1.0 0 -11221820 true "" "ifelse count bugs with [is-mimic] = 0 [\nplot 0\n] [\nplot mean [pattern] of bugs with [is-mimic]\n]"
 
 @#$#@#$#@
 ## WHAT IS IT?

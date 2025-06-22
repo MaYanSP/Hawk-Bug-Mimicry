@@ -19,6 +19,11 @@ relative_data_long <- pivot_longer(population_data,
                                    names_to = "Type", 
                                    values_to = "Count")
 
+hawk_data_long <- pivot_longer(population_data, 
+                               cols = c("LearnedAvoidance", "LearningSens"), 
+                               names_to = "Type", 
+                               values_to = "Value")
+
 # population graph
 
 ggplot(population_data_long, aes(x = Ticks, y = Count, color = Type)) +
@@ -52,7 +57,7 @@ ggplot(trait_data_long, aes(x = Ticks, y = Value, color = Type)) +
 
 # avoidance graph
 
-ggplot(population_data, aes(x = Ticks, y = LearnedAvoidance)) +
+ggplot(hawk_data_long, aes(x = Ticks, y = Value, color = Type)) +
   geom_line(size = 1) +
   theme_minimal() +
   labs(title = "Hawk Avoidance Over Time",
